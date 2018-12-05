@@ -98,7 +98,7 @@ function parseQuery(rawQuery) {
 
     function _ (corpus, level) {
         return new Promise((resolve, reject)=>{
-            if(corpus === t.length)
+            if(level === t.length)
                 resolve(corpus);
             else {
                 if(t[level] instanceof Array) {
