@@ -65,16 +65,16 @@ async function onInput(line) {
 }
 
 /**
- * @todo Treat as a recursive tree?
- * null
- * |
- * search
- * |           \           \           \
- * ifrit        inferno     skeavan     allagan
- * |   \        |   \       |   \       |   \
- * item recipe  item recipe item recipe item recipe
+ * @todo
+ *     null
+ *     |0
+ * 0   search
+ *     |0          \1          \2          \3
+ * 1   ifrit        inferno     skeavan     allagan
+ *     |0  \1       |0  \1      |0  \1      |0  \1
+ * 2   item recipe  item recipe item recipe item recipe
  * @example "search (ifrit, inferno, skeavan, allagan) (item, recipe)" ->
- * ['search', ['ifrit', 'inferno', 'skeavan', 'allagan'], ['item', 'recipe']]
+ * [0:'search', 1:['ifrit', 'inferno', 'skeavan', 'allagan'], 2:['item', 'recipe']]
  * ->
  * [
  *  ['search', 'ifrit', 'item'],
@@ -124,8 +124,7 @@ function toStringTable(data, columns, seperator='\t') {
 }
 
 /**
- * Helper class to make requests to XIVAPI
- * @todo pass in API Key, XIVAPI URL and rate limit
+ * @description Helper class to make requests to XIVAPI
  */
 function XIVAPI(API_KEY, API_URL, API_REQUEST_LIMIT=10) {
     var flux = [new Date(), 0];
@@ -196,6 +195,10 @@ function XIVAPI(API_KEY, API_URL, API_REQUEST_LIMIT=10) {
     return this;
 }
 
+/**
+ * @description Request Class facilitates fulfilling a promise without immediately launching the http.get call
+ * @param {string} url 
+ */
 function Request(url) {
     var _resolve, _reject;
     this.promise = new Promise((resolve, reject)=>{
