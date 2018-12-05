@@ -5,7 +5,9 @@ const rl = require('readline').createInterface({
     prompt: 'XIVAPI>'
 });
 
-var runner = new XIVAPI();
+const __APIKEY = '25270ce756cd474e9864dbee';
+const __XIVAPI = 'https://xivapi.com';
+var runner = new XIVAPI(__APIKEY, __XIVAPI, 10);
 
 rl.prompt();
 
@@ -23,12 +25,9 @@ async function onInput(line) {
         input = input.slice(1);
         bForceLog = true;
     }
-    if(i = input.indexOf('>')) {
-        
-    }
     if(input.includes('<')) {
         let t = input.split('<');
-        queryInput = t[0].split(' ');
+        queryInput = parseQuery(t[0]);
         outputInput = t[1].split(' ');
     }
     else {
@@ -66,7 +65,39 @@ async function onInput(line) {
 }
 
 /**
- * 
+ * @todo Treat as a recursive tree?
+ * null
+ * |
+ * search
+ * |           \           \           \
+ * ifrit        inferno     skeavan     allagan
+ * |   \        |   \       |   \       |   \
+ * item recipe  item recipe item recipe item recipe
+ * @example "search (ifrit, inferno, skeavan, allagan) (item, recipe)" ->
+ * ['search', ['ifrit', 'inferno', 'skeavan', 'allagan'], ['item', 'recipe']]
+ * ->
+ * [
+ *  ['search', 'ifrit', 'item'],
+ *  ['search', 'ifrit', 'recipe'],
+ *  ['search', 'inferno', 'item'],
+ *  ['search', 'inferno', 'recipe'],
+ *  ...
+ * ]
+ * @param {string} rawQuery 
+ * @returns {string[][]} Array of arrays of all command permutations
+ */
+function parseQuery(rawQuery) {
+    let groupedCheck = /\(.*\)/;
+
+    let t = rawQuery.split(' ');
+    t = t.map((d)=>{
+        if(groupedCheck.test(d))
+            return d.substr(1, d.length-2).split(', ');
+        return d;
+    });
+}
+
+/**
  * @param {object[]} data 
  * @param {string[]} columns Keys to pluck to make Columns, default is all columns are displayed
  * @param {string} seperator Column seperator
@@ -94,10 +125,12 @@ function toStringTable(data, columns, seperator='\t') {
 
 /**
  * Helper class to make requests to XIVAPI
+ * @todo pass in API Key, XIVAPI URL and rate limit
  */
-function XIVAPI() {
-    const __APIKEY = '25270ce756cd474e9864dbee';
-    const __XIVAPI = 'https://xivapi.com';
+function XIVAPI(API_KEY, API_URL, API_REQUEST_LIMIT=10) {
+    var flux = [new Date(), 0];
+    var activeRequests = [];
+    var queuedRequests = [];
 
     //https://stackoverflow.com/questions/111529/how-to-create-query-parameters-in-javascript
     function encodeQueryData(data) {
@@ -107,8 +140,7 @@ function XIVAPI() {
                 ret.push(encodeURIComponent(d) + '=' + encodeURIComponent(data[d]));
         }
         return ret.join('&');
-     }
-
+    }
     this.endpoints = {
         'prices': (server, item_id)=>`/market/${server}/items/${item_id}`,
         'history': (server, item_id)=>`/market/${server}/items/${item_id}/history`,
@@ -119,36 +151,78 @@ function XIVAPI() {
     }
 
     /**
+     * @todo Implement request limiter
+     * @todo Cache results (XIVAPI)
      * @param {string} url Endpoint
      * @returns {Promise} Request Promise
      */
-    this.doRequest = function(url) {
+    this.doRequest = async function(url) {
         // Market, Character, FC, LS, PvPTeam requests need an API Key
         var keyTest = /market|character|freecompany|linkshell|pvpteam/;
 
-        return new Promise((resolve, reject)=>{
-            var data = ''; //Assuming Data is Text/JSON
+        let fullURL = `${API_URL}${url}`;
+        if(keyTest.test(url))
+            fullURL += `?key=${API_KEY}`;
 
-            let fullURL = `${__XIVAPI}${url}`;
-            if(keyTest.test(url))
-                fullURL += `?key=${__APIKEY}`;
+        let request = new Request(fullURL);
+        let returnPromise = request.promise.then(()=>{
+            activeRequests.splice(activeRequests.findIndex(request));
+            processQueue();
+        });
 
-            https.get(fullURL, (res)=>{
-                const {statusCode} = res;
-                if(statusCode !== 200) {
-                    reject(statusCode);
-                    res.resume();
-                    return;
-                }
+        queuedRequests.push(request);
+        processQueue();
 
-                res.setEncoding('utf8');
-                res.on('data', (d)=>{
-                    data+=d;
-                });
+        return returnPromise;
+    }
 
-                res.on('end', ()=>{
-                    resolve(JSON.parse(data));
-                })
+    function processQueue() {
+        function toSeconds(time) {
+            return Math.floor(time/1000);
+        }
+
+        let now = toSeconds(Date.now());
+        if(flux[0] !== now) { //Time has advanced
+            flux[0] = now;
+            flux[1] = 0;
+        }
+        else if(flux[1] >= API_REQUEST_LIMIT) return;
+        let r = queuedRequests.pop();
+        activeRequests.push(r);
+        r.do();
+        flux[1]++;
+    }
+
+    return this;
+}
+
+function Request(url) {
+    var _resolve, _reject;
+    this.promise = new Promise((resolve, reject)=>{
+        _resolve = resolve;
+        _reject = reject;
+    });
+
+    this.timestamp = new Date();
+
+    this.do = function() {
+        var data = ''; //Assuming Data is Text/JSON
+
+        https.get(url, (res)=>{
+            const {statusCode} = res;
+            if(statusCode !== 200) {
+                _reject(statusCode);
+                res.resume();
+                return;
+            }
+
+            res.setEncoding('utf8');
+            res.on('data', (d)=>{
+                data+=d;
+            });
+
+            res.on('end', ()=>{
+                _resolve(JSON.parse(data));
             })
         });
     }
