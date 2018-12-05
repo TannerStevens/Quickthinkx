@@ -95,6 +95,22 @@ function parseQuery(rawQuery) {
             return d.substr(1, d.length-2).split(', ');
         return d;
     });
+
+    function _ (corpus, level) {
+        return new Promise((resolve, reject)=>{
+            if(corpus === t.length)
+                resolve(corpus);
+            else {
+                if(t[level] instanceof Array) {
+                    let all = Promise.all(t[level].map((d)=>_(corpus.concat(d), level+1)));
+                    resolve(all);
+                }
+                else { //Assume single value
+                    resolve(_(corpus.concat(t[level]), level+1));
+                }
+            }
+        });
+    }
 }
 
 /**
